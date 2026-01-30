@@ -1,0 +1,26 @@
+name: "dockerfile-lint"
+description: "Lint a Dockerfile using hadolint"
+inputs:
+  dockerfile:
+    description: "Path to Dockerfile"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Install hadolint
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update -y
+        sudo apt-get install -y hadolint
+
+    - name: Run hadolint
+      shell: bash
+      run: |
+        set -euo pipefail
+        DF="${{ inputs.dockerfile }}"
+        if [[ ! -f "$DF" ]]; then
+          echo "Dockerfile not found: $DF"
+          exit 1
+        fi
+        hadolint "$DF"

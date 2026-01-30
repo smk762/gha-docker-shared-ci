@@ -1,0 +1,27 @@
+name: "compose-validate"
+description: "Validate docker compose files with `docker compose config`"
+inputs:
+  files:
+    description: "Space-separated compose files"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "docker not found"
+          exit 1
+        fi
+        FILES="${{ inputs.files }}"
+        ARGS=()
+        for f in ${FILES}; do
+          if [[ ! -f "$f" ]]; then
+            echo "Compose file not found: $f"
+            exit 1
+          fi
+          ARGS+=("-f" "$f")
+        done
+        echo "Validating compose files: ${FILES}"
+        docker compose "${ARGS[@]}" config -q

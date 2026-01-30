@@ -1,0 +1,21 @@
+name: release
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+
+jobs:
+  docker_release:
+    uses: YOURUSER/gha-dockerhub-shared-ci/.github/workflows/docker-release.yml@v1
+    with:
+      image: yourdockerhubuser/yourapp
+      context: .
+      dockerfile: Dockerfile
+      platforms: linux/amd64
+      push_on_main: true
+      push_on_tag: true
+      also_tag_latest: true
+      sign_with_cosign: true
+      trivy_fail_severity: "CRITICAL"
+    secrets: inherit

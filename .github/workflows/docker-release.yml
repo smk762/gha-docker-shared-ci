@@ -1,0 +1,179 @@
+name: docker-release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Docker image name (e.g. username/repo)"
+        required: true
+        type: string
+      context:
+        required: false
+        default: "."
+        type: string
+      dockerfile:
+        required: false
+        default: "Dockerfile"
+        type: string
+      platforms:
+        required: false
+        default: "linux/amd64"
+        type: string
+      compose_files:
+        description: "Space-separated list of compose files to validate (optional)"
+        required: false
+        default: ""
+        type: string
+      push_on_main:
+        description: "Push on main branch pushes"
+        required: false
+        default: true
+        type: boolean
+      push_on_tag:
+        description: "Push on version tag pushes (v*)"
+        required: false
+        default: true
+        type: boolean
+      also_tag_latest:
+        description: "Also tag :latest (typically on main only)"
+        required: false
+        default: true
+        type: boolean
+      sign_with_cosign:
+        description: "Keyless cosign sign after push (recommended)"
+        required: false
+        default: true
+        type: boolean
+      trivy_fail_severity:
+        description: "Comma-separated severities to fail on"
+        required: false
+        default: "CRITICAL"
+        type: string
+      trivy_ignore_unfixed:
+        required: false
+        default: true
+        type: boolean
+      build_args:
+        description: "Optional newline-separated build args: KEY=VALUE"
+        required: false
+        default: ""
+        type: string
+
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  id-token: write  # required for keyless cosign
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dockerfile lint (hadolint)
+        uses: ./.github/actions/dockerfile-lint
+        with:
+          dockerfile: ${{ inputs.dockerfile }}
+
+      - name: Validate compose (optional)
+        if: ${{ inputs.compose_files != '' }}
+        uses: ./.github/actions/compose-validate
+        with:
+          files: ${{ inputs.compose_files }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ inputs.image }}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          TAGS="${IMAGE}:sha-${SHORT_SHA}"
+
+          # Tag from git tag
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            TAGS="${TAGS},${IMAGE}:${TAG_NAME}"
+          fi
+
+          # latest optionally on main
+          if [[ "${{ inputs.also_tag_latest }}" == "true" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            TAGS="${TAGS},${IMAGE}:latest"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide push
+        id: push
+        shell: bash
+        run: |
+          set -euo pipefail
+          DO_PUSH="false"
+          if [[ "${GITHUB_REF_NAME}" == "main" && "${{ inputs.push_on_main }}" == "true" ]]; then
+            DO_PUSH="true"
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* && "${{ inputs.push_on_tag }}" == "true" ]]; then
+            DO_PUSH="true"
+          fi
+          echo "push=${DO_PUSH}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and (optionally) push
+        id: build_push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ steps.push.outputs.push }}
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: ${{ inputs.build_args }}
+
+      - name: Trivy scan pushed image (sha tag)
+        if: ${{ steps.push.outputs.push == 'true' }}
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ inputs.image }}:sha-${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: ${{ inputs.trivy_ignore_unfixed }}
+          vuln-type: "os,library"
+          severity: ${{ inputs.trivy_fail_severity }}
+
+      - name: Install cosign
+        if: ${{ steps.push.outputs.push == 'true' && inputs.sign_with_cosign }}
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Cosign sign (keyless)
+        if: ${{ steps.push.outputs.push == 'true' && inputs.sign_with_cosign }}
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ inputs.image }}"
+          DIGEST="${{ steps.build_push.outputs.digest }}"
+          if [[ -z "${DIGEST}" ]]; then
+            echo "No digest from build step; cannot sign."
+            exit 1
+          fi
+          echo "Signing ${IMAGE}@${DIGEST}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"

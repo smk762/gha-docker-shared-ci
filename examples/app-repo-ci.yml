@@ -1,0 +1,13 @@
+name: ci
+on:
+  pull_request:
+
+jobs:
+  docker_ci:
+    uses: YOURUSER/gha-dockerhub-shared-ci/.github/workflows/docker-ci.yml@v1
+    with:
+      image: yourdockerhubuser/yourapp
+      context: .
+      dockerfile: Dockerfile
+      compose_files: "compose.yml"
+      trivy_fail_severity: "CRITICAL,HIGH"

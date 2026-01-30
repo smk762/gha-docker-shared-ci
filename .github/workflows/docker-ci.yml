@@ -1,0 +1,92 @@
+name: docker-ci (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Docker image name (e.g. username/repo)"
+        required: true
+        type: string
+      context:
+        description: "Build context"
+        required: false
+        default: "."
+        type: string
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        default: "Dockerfile"
+        type: string
+      platforms:
+        description: "Buildx platforms"
+        required: false
+        default: "linux/amd64"
+        type: string
+      compose_files:
+        description: "Space-separated list of compose files to validate (optional)"
+        required: false
+        default: ""
+        type: string
+      trivy_fail_severity:
+        description: "Comma-separated severities to fail on (e.g. CRITICAL,HIGH)"
+        required: false
+        default: "CRITICAL,HIGH"
+        type: string
+      trivy_ignore_unfixed:
+        description: "Ignore unfixed vulns (true/false)"
+        required: false
+        default: true
+        type: boolean
+      build_args:
+        description: "Optional newline-separated build args: KEY=VALUE"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dockerfile lint (hadolint)
+        uses: ./.github/actions/dockerfile-lint
+        with:
+          dockerfile: ${{ inputs.dockerfile }}
+
+      - name: Validate compose (optional)
+        if: ${{ inputs.compose_files != '' }}
+        uses: ./.github/actions/compose-validate
+        with:
+          files: ${{ inputs.compose_files }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: false
+          load: true
+          tags: ${{ inputs.image }}:ci-${{ github.sha }}
+          build-args: ${{ inputs.build_args }}
+
+      - name: Trivy scan image
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ inputs.image }}:ci-${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: ${{ inputs.trivy_ignore_unfixed }}
+          vuln-type: "os,library"
+          severity: ${{ inputs.trivy_fail_severity }}
