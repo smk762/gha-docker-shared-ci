@@ -17,5 +17,4 @@ jobs:
       push_on_tag: true
       also_tag_latest: true
       sign_with_cosign: true
-      trivy_fail_severity: "CRITICAL"
     secrets: inherit

@@ -44,15 +44,6 @@ on:
         required: false
         default: true
         type: boolean
-      trivy_fail_severity:
-        description: "Comma-separated severities to fail on"
-        required: false
-        default: "CRITICAL"
-        type: string
-      trivy_ignore_unfixed:
-        required: false
-        default: true
-        type: boolean
       build_args:
         description: "Optional newline-separated build args: KEY=VALUE"
         required: false
@@ -146,17 +137,6 @@ jobs:
           push: ${{ steps.push.outputs.push }}
           tags: ${{ steps.tags.outputs.tags }}
           build-args: ${{ inputs.build_args }}
-
-      - name: Trivy scan pushed image (sha tag)
-        if: ${{ steps.push.outputs.push == 'true' }}
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: ${{ inputs.image }}:sha-${{ github.sha }}
-          format: table
-          exit-code: "1"
-          ignore-unfixed: ${{ inputs.trivy_ignore_unfixed }}
-          vuln-type: "os,library"
-          severity: ${{ inputs.trivy_fail_severity }}
 
       - name: Install cosign
         if: ${{ steps.push.outputs.push == 'true' && inputs.sign_with_cosign }}

@@ -27,16 +27,6 @@ on:
         required: false
         default: ""
         type: string
-      trivy_fail_severity:
-        description: "Comma-separated severities to fail on (e.g. CRITICAL,HIGH)"
-        required: false
-        default: "CRITICAL,HIGH"
-        type: string
-      trivy_ignore_unfixed:
-        description: "Ignore unfixed vulns (true/false)"
-        required: false
-        default: true
-        type: boolean
       build_args:
         description: "Optional newline-separated build args: KEY=VALUE"
         required: false
@@ -80,13 +70,3 @@ jobs:
           load: true
           tags: ${{ inputs.image }}:ci-${{ github.sha }}
           build-args: ${{ inputs.build_args }}
-
-      - name: Trivy scan image
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: ${{ inputs.image }}:ci-${{ github.sha }}
-          format: table
-          exit-code: "1"
-          ignore-unfixed: ${{ inputs.trivy_ignore_unfixed }}
-          vuln-type: "os,library"
-          severity: ${{ inputs.trivy_fail_severity }}

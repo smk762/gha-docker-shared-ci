@@ -10,4 +10,3 @@ jobs:
       context: .
       dockerfile: Dockerfile
       compose_files: "compose.yml"
-      trivy_fail_severity: "CRITICAL,HIGH"

@@ -7,7 +7,6 @@ It implements a practical security pipeline aligned with the hardening checklist
 - Validate compose files
 - Build (Buildx)
 - SBOM (optional)
-- Vulnerability scan (Trivy) with fail thresholds
 - Push to DockerHub on release
 - Optional **keyless Cosign signing** (recommended over legacy Docker Content Trust)
 
@@ -21,10 +20,10 @@ Instead of copy/pasting YAML across many repos, each app repo keeps a tiny wrapp
 ### Reusable workflows
 - `.github/workflows/docker-ci.yml`
   - For PRs / non-release builds (no push)
-  - Lint + compose validate + build + Trivy scan
+  - Lint + compose validate + build
 - `.github/workflows/docker-release.yml`
   - For main/tag releases (push to DockerHub)
-  - Lint + compose validate + build+push + Trivy scan
+  - Lint + compose validate + build+push
   - Optional Cosign signing (keyless)
 
 ### Composite actions
@@ -62,7 +61,6 @@ jobs:
       context: .
       dockerfile: Dockerfile
       compose_files: "compose.yml"
-      trivy_fail_severity: "CRITICAL,HIGH"
 ```
 
 Example **release** wrapper (push to DockerHub) in an app repo:
@@ -86,7 +84,6 @@ jobs:
       push_on_main: true
       push_on_tag: true
       sign_with_cosign: true
-      trivy_fail_severity: "CRITICAL"
     secrets: inherit
 ```
 
